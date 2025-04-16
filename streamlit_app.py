@@ -85,26 +85,64 @@ def compute_personal_score(row):
             nps_w*nps + churn_w*churn + referral_w*ref)
 
 if st.button("Run Simulation"):
+    # Initial brand list
     brands = df['brand'].tolist()
-    timeline = []
+    timeline_sim = []
+    timeline_riv = []
+
+    # Run voting rounds
     for _ in range(weeks):
         scores = df.apply(compute_personal_score, axis=1)
         mean_score = scores.mean()
         new_brands = []
         for i in range(n):
+            # Personal vote based on score
             p_vote = 'Simlane' if scores[i] >= mean_score else 'Rival'
+            # Peer vote (majority)
             peers = neighbors[i]
-            sim_cnt = sum(brands[j]=='Simlane' for j in peers)
-            peer_vote = 'Simlane' if sim_cnt >= (len(peers)-sim_cnt) else 'Rival'
-            vote = p_vote  # default to personal
-            new_brands.append(vote)
+            sim_cnt = sum(brands[j] == 'Simlane' for j in peers)
+            peer_vote = 'Simlane' if sim_cnt >= (len(peers) - sim_cnt) else 'Rival'
+            # Final vote default to personal
+            new_brands.append(p_vote)
         brands = new_brands
-        timeline.append(brands.count('Simlane'))
-    df_tl = pd.DataFrame({'Week': range(1, weeks+1), 'Simlane': timeline})
+        sim_count = brands.count('Simlane')
+        timeline_sim.append(sim_count)
+        timeline_riv.append(n - sim_count)
+
+    # Build timeline DataFrame
+    timeline_df = pd.DataFrame({
+        'Week': range(1, weeks + 1),
+        'Simlane': timeline_sim,
+        'Rival': timeline_riv
+    }).set_index('Week')
+
+    # Plot results
     st.subheader("Voting Simulation Results")
-    st.line_chart(df_tl.set_index('Week'))
-    final_share = brands.count('Simlane')/n*100
-    st.markdown(f"**Final Simlane Share: {final_share:.1f}%**")
+    st.line_chart(timeline_df)
+
+    # Tabular view
+    st.subheader("Brand Share by Week")
+    st.dataframe(timeline_df)
+
+    # Narrative summary
+    sim_initial = timeline_sim[0] / n * 100
+    sim_final = timeline_sim[-1] / n * 100
+    st.markdown( (
+        f"**Simlane share**: {sim_initial:.1f}% → {sim_final:.1f}% over {weeks} rounds "
+        f"(n={n} buyers). Rival ended at {100 - sim_final:.1f}%"
+    ) )
+
+    # Segment-level breakdown
     df['final_brand'] = brands
-    st.subheader("Sample Final Assignments")
-    st.dataframe(df[['id','segment','final_brand']].sample(min(20,n)))
+    st.subheader("Segment-level Outcomes")
+    seg_table = (
+        df.groupby(['segment', 'final_brand'])
+          .size()
+          .unstack(fill_value=0)
+    )
+    st.dataframe(seg_table)
+
+    # Sample final assignments
+    st.subheader("Sample Buyer Assignments")
+    sample_cols = ['id', 'segment', 'final_brand']
+    st.dataframe(df[sample_cols].sample(min(20, n)))
