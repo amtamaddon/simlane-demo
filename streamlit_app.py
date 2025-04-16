@@ -52,6 +52,8 @@ rival_traits = {
 }
 
 # === Create or Load Population ===
+import networkx as nx
+
 def generate_population(n=500):
     segment_profiles = [
         {"name": "Loyalist", "weight": 0.35, "price_sensitivity": 0.2, "trendiness": 0.1},
@@ -79,13 +81,45 @@ def generate_population(n=500):
             "trendiness": profile["trendiness"]
         }
         population.append(agent)
+    # Build social influence graph (simple undirected for now)
+    G = nx.watts_strogatz_graph(n=n, k=6, p=0.3)  # small-world graph
+    for i, agent in enumerate(population):
+        agent["friends"] = list(G.neighbors(i))
+        agent["memory"] = []  # record brand experiences
+        agent["emotion"] = "neutral"  # can be: happy, doubtful, angry, loyal
     return pd.DataFrame(population)
 
 # === Simulation Logic ===
 def simulate_event(population_df, event, simlane_traits, rival_traits):
+    def utility(agent, brand_traits):
+        return (
+            -agent['price_sensitivity'] * brand_traits['Price Tier']
+            + agent['trendiness'] * brand_traits['Influencer Power']
+            + brand_traits['Trust'] * 0.5
+        ) - agent['switching_cost']
     logs = []
     new_df = population_df.copy()
     for index, agent in population_df.iterrows():
+        agent_utility_simlane = utility(agent, simlane_traits)
+        agent_utility_rival = utility(agent, rival_traits)
+        agent_friends = agent['friends']
+        peer_pressure = sum([1 for f in agent_friends if population_df.at[f, 'brand'] != agent['brand']]) / max(1, len(agent_friends))
+
+        if agent_utility_rival > agent_utility_simlane and agent['brand'] == "Simlane":
+            switch_chance = min(1.0, 0.5 + 0.5 * peer_pressure)
+            if random.random() < switch_chance:
+                population_df.at[index, 'brand'] = "Rival"
+                population_df.at[index, 'memory'] = agent['memory'] + ["Simlane"]
+                population_df.at[index, 'emotion'] = "doubtful"
+                logs.append(f"Agent {index} switched to Rival based on utility + social pressure.")
+
+        elif agent_utility_simlane > agent_utility_rival and agent['brand'] == "Rival":
+            switch_chance = min(1.0, 0.5 + 0.5 * peer_pressure)
+            if random.random() < switch_chance:
+                population_df.at[index, 'brand'] = "Simlane"
+                population_df.at[index, 'memory'] = agent['memory'] + ["Rival"]
+                population_df.at[index, 'emotion'] = "hopeful"
+                logs.append(f"Agent {index} switched to Simlane based on utility + social pressure.")
         segment = agent['segment']
         current_brand = agent['brand']
         cost = agent['switching_cost']
@@ -144,9 +178,17 @@ if st.button("Run Simulation"):
     st.subheader(f"📈 Brand Loyalty Over {time_steps} Weeks")
     st.line_chart(df_timeline)
 
+    st.subheader("🧩 Summary of Behavior Insights")
+    net_change = df_timeline.iloc[-1] - df_timeline.iloc[0]
+    delta_df = pd.DataFrame({"Brand": net_change.index, "Net Change": net_change.values})
+    delta_df = delta_df.sort_values(by="Net Change", ascending=False)
+    st.dataframe(delta_df.set_index("Brand"))
+
     st.subheader("📝 Agent-Level Decision Log")
     if logs_all:
-        for log in logs_all[:100]:
-            st.text(log)
+        with st.expander("View sample of agent-level switching behavior", expanded=False):
+            for log in logs_all[:50]:
+                st.text(log)
     else:
+        st.info("No switching events recorded. Try a different scenario or adjust brand traits.")
         st.info("No switching events recorded. Try a different scenario or adjust brand traits.")
