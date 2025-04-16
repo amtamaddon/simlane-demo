@@ -94,7 +94,7 @@ def generate_population(n=500):
         agent["friends"] = list(G.neighbors(i))
         agent["memory"] = []  # record brand experiences
         agent["emotion"] = "neutral"  # can be: happy, doubtful, angry, loyal
-        for agent in population:
+            for agent in population:
         agent['has_switched'] = False
     return pd.DataFrame(population)
 
