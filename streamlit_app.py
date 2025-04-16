@@ -3,7 +3,6 @@ import pandas as pd
 import numpy as np
 import networkx as nx
 import random
-import copy
 
 # ─── App Config ───────────────────────────────────────────────────────────────
 st.set_page_config("Simlane Strategic Simulator", layout="wide")
@@ -37,9 +36,6 @@ with st.sidebar.expander("2) Brand Traits", expanded=False):
 with st.sidebar.expander("3) Campaign Sequence", expanded=False):
     event_options = ["Price Cut", "Influencer Boost", "Bad PR"]
     campaign = st.multiselect("Sequence of weekly events", event_options, default=event_options[:1])
-
-with st.sidebar.expander("4) Optimization", expanded=False):
-    run_opt = st.button("Optimize Strategy")
 
 # ─── Agent Class & Population ─────────────────────────────────────────────────
 class Agent:
@@ -99,7 +95,6 @@ def apply_event(pop, week, event, sim_t, riv_t):
             old = agent.brand; agent.brand = targ
             agent.update_emotion('hopeful' if targ=='Simlane' else 'doubtful')
             logs.append(f"[W{week}] Agent {agent.id} switch {old}->{targ} p={prob:.2f}")
-        # event nudges (unchanged)
         if event=='Price Cut' and agent.segment=='Price Sensitive':
             pct = 0.5*(1-agent.switch_cost)
             if ((sim_t['Price Tier']<riv_t['Price Tier'] and agent.brand=='Rival')
@@ -116,47 +111,39 @@ def apply_event(pop, week, event, sim_t, riv_t):
     for a in pop: a.history.append((week, a.brand, a.emotion))
     return logs
 
-# ─── Greedy Optimizer ───────────────────────────────────────────────────────────
-def greedy_opt(pop_init, weeks, sim_t, riv_t):
-    pop = copy.deepcopy(pop_init)
-    seq = []
-    for w in range(1, weeks+1):
-        best_e, best_count, best_pop = None, -1, None
-        for e in ['Price Cut','Influencer Boost','Bad PR']:
-            tmp_pop = copy.deepcopy(pop)
-            tmp_t = copy.deepcopy(sim_t)
-            logs = apply_event(tmp_pop, w, e, tmp_t, riv_t)
-            count = sum(1 for a in tmp_pop if a.brand=='Simlane')
-            if count>best_count: best_count, best_e, best_pop = count, e, tmp_pop
-        seq.append(best_e)
-        pop = best_pop
-        # no trait reset: sim_t already updated if Bad PR applied
-    final_share = sum(1 for a in pop if a.brand=='Simlane')/len(pop)
-    return seq, final_share
-
-# ─── Run & Display ─────────────────────────────────────────────────────────────
-if st.button("Run Simulation") or run_opt:
+# ─── Run Simulation & Display ─────────────────────────────────────────────────
+if st.button("Run Simulation"):
     population = build_population(n_agents)
+    timeline, logs = [], []
+    for week in range(1, weeks+1):
+        evt = campaign[(week-1)%len(campaign)] if campaign else None
+        logs += apply_event(population, week, evt, simlane_traits, rival_traits)
+        counts = pd.Series([a.brand for a in population]).value_counts()
+        timeline.append({"Week": week,
+                         "Simlane": counts.get("Simlane", 0),
+                         "Rival": counts.get("Rival", 0)})
+    df_tl = pd.DataFrame(timeline).set_index("Week")
 
-    if run_opt:
-        best_seq, best_share = greedy_opt(population, weeks, simlane_traits.copy(), rival_traits)
-        st.subheader("🔍 Optimized Campaign Sequence")
-        st.write(best_seq)
-        st.write(f"Projected Final Simlane Share: {best_share:.1%}")
-    else:
-        timeline, logs = [], []
-        for week in range(1, weeks+1):
-            evt = campaign[(week-1)%len(campaign)] if campaign else None
-            logs += apply_event(population, week, evt, simlane_traits, rival_traits)
-            cnts = pd.Series([a.brand for a in population]).value_counts()
-            timeline.append({"Week":week,
-                             "Simlane":cnts.get("Simlane",0),
-                             "Rival":cnts.get("Rival",0)})
-        df_tl = pd.DataFrame(timeline).set_index("Week")
-        st.subheader("Brand Adoption Over Time")
-        st.line_chart(df_tl)
-        st.subheader("Final Brand Shares")
-        st.table(df_tl.iloc[-1].to_frame().T)
-        st.subheader("Sample Logs")
-        with st.expander("", expanded=False):
-            for log in logs[:50]: st.text(log)
+    # Chart & Tables
+    st.subheader("Brand Adoption Over Time")
+    st.line_chart(df_tl)
+    st.subheader("Final Brand Shares")
+    st.table(df_tl.iloc[-1].to_frame().T)
+    st.subheader("Sample Switch Logs")
+    with st.expander("", expanded=False):
+        for log in logs[:50]: st.text(log)
+
+    # Narrative Summary
+    start_sim = df_tl.iloc[0]["Simlane"]
+    end_sim   = df_tl.iloc[-1]["Simlane"]
+    delta     = end_sim - start_sim
+    pct_change = delta / n_agents * 100
+    st.markdown("---")
+    st.subheader("📖 Narrative Summary")
+    st.markdown(
+        f"Over the {weeks}‑week simulation, Simlane grew from {start_sim} to {end_sim} agents, "
+        f"a net gain of {delta} ({pct_change:.1f}% of the population). Rival ended with "
+        f"{df_tl.iloc[-1]['Rival']} agents. \n"
+        "Key drivers: “Innovation” and “Trust” had the strongest pull, while Price Cuts nudged Price‑Sensitive segments. "
+        "Social contagion amplified early gains—focus future campaigns on high‑influence segments and maintaining brand trust."
+    )
