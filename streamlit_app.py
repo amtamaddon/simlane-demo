@@ -4,13 +4,9 @@ import random
 import io
 
 st.set_page_config(page_title="Simlane Strategic Simulator", layout="centered")
-col1, col2 = st.columns([2, 1])
-with col1:
-    st.title("🧠 Simlane Strategic Scenario Simulator")
-with col2:
-    st.metric(label="📊 Rounds Simulated", value=3)
-    st.metric(label="👥 Agents", value=500)
-st.subheader("Customer Switching Behavior Based on Market Events")
+
+
+st.title("Simlane Strategic Scenario Simulator")
 
 # === Step 0: Load or Generate Agent Data ===
 with st.expander("📁 Load Buyer Data or Generate Synthetic Population", expanded=False):
@@ -38,7 +34,7 @@ if upload is not None:
         st.error(f"Error reading file: {e}. Generating synthetic agents instead.")
 
 if not use_uploaded_data:
-    st.markdown("Or answer a few quick questions to generate your audience:")
+    st.markdown("### 🎯 Audience Variables")
     urban_pct = st.slider("% Urban Customers", 0, 100, 60)
     high_income_pct = st.slider("% High Income (>$100k)", 0, 100, 30)
     time_steps = st.slider("🕒 Number of Simulation Rounds (Weeks)", 1, 10, 3)
@@ -65,6 +61,8 @@ import networkx as nx
 
 def generate_population(n=500):
     segment_profiles = [
+        {"name": "Tech Enthusiast", "weight": 0.2, "price_sensitivity": 0.3, "trendiness": 0.8},
+        {"name": "Eco-Conscious", "weight": 0.2, "price_sensitivity": 0.4, "trendiness": 0.5},
         {"name": "Loyalist", "weight": 0.35, "price_sensitivity": 0.2, "trendiness": 0.1},
         {"name": "Price Sensitive", "weight": 0.4, "price_sensitivity": 0.9, "trendiness": 0.3},
         {"name": "Trend Follower", "weight": 0.25, "price_sensitivity": 0.4, "trendiness": 0.9}
@@ -96,6 +94,8 @@ def generate_population(n=500):
         agent["friends"] = list(G.neighbors(i))
         agent["memory"] = []  # record brand experiences
         agent["emotion"] = "neutral"  # can be: happy, doubtful, angry, loyal
+        for agent in population:
+        agent['has_switched'] = False
     return pd.DataFrame(population)
 
 # === Simulation Logic ===
@@ -109,6 +109,8 @@ def simulate_event(population_df, event, simlane_traits, rival_traits):
     logs = []
     new_df = population_df.copy()
     for index, agent in population_df.iterrows():
+        if 'has_switched' in agent and agent['has_switched']:
+            continue
         agent_utility_simlane = utility(agent, simlane_traits)
         agent_utility_rival = utility(agent, rival_traits)
         agent_friends = agent['friends']
@@ -121,6 +123,7 @@ def simulate_event(population_df, event, simlane_traits, rival_traits):
                 population_df.at[index, 'memory'] = agent['memory'] + ["Simlane"]
                 population_df.at[index, 'emotion'] = "doubtful"
                 logs.append(f"Agent {index} switched to Rival based on utility + social pressure.")
+                population_df.at[index, 'has_switched'] = True
 
         elif agent_utility_simlane > agent_utility_rival and agent['brand'] == "Rival":
             switch_chance = min(1.0, 0.5 + 0.5 * peer_pressure)
@@ -129,6 +132,7 @@ def simulate_event(population_df, event, simlane_traits, rival_traits):
                 population_df.at[index, 'memory'] = agent['memory'] + ["Rival"]
                 population_df.at[index, 'emotion'] = "hopeful"
                 logs.append(f"Agent {index} switched to Simlane based on utility + social pressure.")
+                population_df.at[index, 'has_switched'] = True
         segment = agent['segment']
         current_brand = agent['brand']
         cost = agent['switching_cost']
@@ -138,20 +142,24 @@ def simulate_event(population_df, event, simlane_traits, rival_traits):
                 if random.random() < 0.4 * (1 - cost):
                     new_df.at[index, 'brand'] = "Rival"
                     logs.append(f"Agent {index} switched to Rival due to lower price.")
+                    new_df.at[index, 'has_switched'] = True
             elif simlane_traits["Price Tier"] < rival_traits["Price Tier"] and current_brand == "Rival":
                 if random.random() < 0.5 * (1 - cost):
                     new_df.at[index, 'brand'] = "Simlane"
                     logs.append(f"Agent {index} switched to Simlane due to lower price.")
+                    new_df.at[index, 'has_switched'] = True
 
         elif event == "Influencer Boost" and segment == "Trend Follower":
             if simlane_traits["Influencer Power"] > rival_traits["Influencer Power"] and current_brand == "Rival":
                 if random.random() < 0.4 * (1 - cost):
                     new_df.at[index, 'brand'] = "Simlane"
                     logs.append(f"Agent {index} switched to Simlane influenced by trend.")
+                    new_df.at[index, 'has_switched'] = True
             elif rival_traits["Influencer Power"] > simlane_traits["Influencer Power"] and current_brand == "Simlane":
                 if random.random() < 0.3 * (1 - cost):
                     new_df.at[index, 'brand'] = "Rival"
                     logs.append(f"Agent {index} switched to Rival influenced by trend.")
+                    new_df.at[index, 'has_switched'] = True
 
         elif event == "Bad PR" and segment == "Loyalist":
             if current_brand == "Simlane":
@@ -159,6 +167,7 @@ def simulate_event(population_df, event, simlane_traits, rival_traits):
                 if trust_delta > 0 and random.random() < 0.3 * trust_delta * (1 - cost):
                     new_df.at[index, 'brand'] = "Rival"
                     logs.append(f"Agent {index} lost trust in Simlane after PR and switched.")
+                    new_df.at[index, 'has_switched'] = True
 
     return new_df, logs
 
@@ -168,6 +177,8 @@ event = st.selectbox(
     ["Price Cut", "Influencer Boost", "Bad PR"],
     help="Simulate a single pressure event on brand loyalty. More complex campaigns coming soon."
 )
+
+
 
 # === Run Simulation ===
 if st.button("Run Simulation"):
@@ -198,10 +209,16 @@ if st.button("Run Simulation"):
     st.dataframe(delta_df.set_index("Brand"))
 
     total_agents = df_timeline.iloc[-1].sum()
-    switch_count = sum(1 for log in logs_all if "switched" in log)
+    switch_ids = set()
+    for log in logs_all:
+        if "switched" in log:
+            parts = log.split("Agent ")[1]
+            agent_id = parts.split(" ")[0]
+            switch_ids.add(agent_id)
+    switch_count = len(switch_ids)
     rate = switch_count / total_agents * 100
     winning_brand = delta_df.iloc[0]['Brand']
-    st.markdown(f"**🧠 Summary:** Over {time_steps} rounds, {switch_count} agents (~{rate:.1f}%) switched brands. The winning brand was **{winning_brand}**.")
+    st.markdown(f"**Summary:** Over {time_steps} rounds, {switch_count} agents (~{rate:.1f}%) switched brands. The winning brand was **{winning_brand}**.")
 
 
     if logs_all:
