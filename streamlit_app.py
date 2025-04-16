@@ -47,6 +47,7 @@ class Agent:
         self.income         = "High" if random.random() < high_inc_pct/100 else "Low"
         self.origin         = "Urban" if random.random() < urban_pct/100 else "Rural"
         self.switch_cost    = random.uniform(0.1, 0.9)
+        self.influence      = random.randint(1, 10)
         self.brand          = "Simlane" if random.random() < 0.6 else "Rival"
         self.friends        = []
         self.history        = []
@@ -71,11 +72,23 @@ def build_population(n):
 
 # ─── Utility & Event Logic ─────────────────────────────────────────────────────
 def compute_utils(pop, traits):
+    # price sensitivity cost
     price_term = np.array([a.price_sens for a in pop]) * traits['Price Tier']
-    trend_term = np.array([a.trendiness for a in pop]) * traits['Influencer']
+    # innovation appeal
+    innov_term = np.array([a.trendiness for a in pop]) * traits['Innovation']
+    # social influence from top influencers
+    infl_term = np.array([a.influence for a in pop]) * traits['Influencer']
+    # base trust
     trust_term = np.array([traits['Trust']] * len(pop)) * 0.5
+    # switching cost barrier
     cost_term  = np.array([a.switch_cost for a in pop])
-    return -price_term + trend_term + trust_term - cost_term
+    # income & origin modifiers
+    income_raw = np.array([1 if a.income=='High' else -1 for a in pop])
+    origin_raw = np.array([1 if a.origin=='Urban' else -1 for a in pop])
+    income_term = income_raw * traits['Trust'] * 0.1
+    origin_term = origin_raw * traits['Influencer'] * 0.1
+    # total utility
+    return -price_term + innov_term + infl_term + trust_term - cost_term + income_term + origin_term
 
 
 def apply_event(pop, week, event, sim_t, riv_t):
@@ -144,6 +157,6 @@ if st.button("Run Simulation"):
         f"Over the {weeks}‑week simulation, Simlane grew from {start_sim} to {end_sim} agents, "
         f"a net gain of {delta} ({pct_change:.1f}% of the population). Rival ended with "
         f"{df_tl.iloc[-1]['Rival']} agents. \n"
-        "Key drivers: “Innovation” and “Trust” had the strongest pull, while Price Cuts nudged Price‑Sensitive segments. "
-        "Social contagion amplified early gains—focus future campaigns on high‑influence segments and maintaining brand trust."
+        "Key drivers: “Innovation” and “Influencer Power”—especially among high‑income, urban agents—powered growth. "
+        "Recommendation: prioritize community seeding in urban clusters and boost trust via targeted loyalty programs."
     )
