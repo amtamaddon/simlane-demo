@@ -32,8 +32,8 @@ if upload is not None:
         st.error(f"Error reading file: {e}. Generating synthetic agents instead.")
 
 if not use_uploaded_data:
-    with st.expander("🎯 Audience Variables", expanded=False):
-        st.markdown("Or answer a few quick questions to generate your audience:")
+    st.markdown("### 🎯 Audience Variables")
+st.markdown("Or answer a few quick questions to generate your audience:")
     urban_pct = st.slider("% Urban Customers", 0, 100, 60)
     high_income_pct = st.slider("% High Income (>$100k)", 0, 100, 30)
     time_steps = st.slider("🕒 Number of Simulation Rounds (Weeks)", 1, 10, 3)
@@ -166,14 +166,7 @@ event = st.selectbox(
     help="Simulate a single pressure event on brand loyalty. More complex campaigns coming soon."
 )
 
-# === Header and Metrics ===
-if 'time_steps' in locals():
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        st.title("Simlane Strategic Scenario Simulator")
-    with col2:
-        st.metric(label="📊 Rounds Simulated", value=time_steps)
-        st.metric(label="👥 Agents", value=len(df_input) if use_uploaded_data else 500)
+st.title("Simlane Strategic Scenario Simulator")
 
 # === Run Simulation ===
 if st.button("Run Simulation"):
@@ -204,7 +197,13 @@ if st.button("Run Simulation"):
     st.dataframe(delta_df.set_index("Brand"))
 
     total_agents = df_timeline.iloc[-1].sum()
-    switch_count = sum(1 for log in logs_all if "switched" in log)
+    switch_ids = set()
+    for log in logs_all:
+        if "switched" in log:
+            parts = log.split("Agent ")[1]
+            agent_id = parts.split(" ")[0]
+            switch_ids.add(agent_id)
+    switch_count = len(switch_ids)
     rate = switch_count / total_agents * 100
     winning_brand = delta_df.iloc[0]['Brand']
     st.markdown(f"**Summary:** Over {time_steps} rounds, {switch_count} agents (~{rate:.1f}%) switched brands. The winning brand was **{winning_brand}**.")
