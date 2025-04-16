@@ -167,7 +167,8 @@ event = st.selectbox(
 )
 
 # === Metrics Display (after variables exist) ===
-col1, col2 = st.columns([2, 1])
+if 'time_steps' in locals() and ('df_input' in locals() or 'pop' in locals()):
+    col1, col2 = st.columns([2, 1])
     with col1:
         st.title("Simlane Strategic Scenario Simulator")
     with col2:
