@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import networkx as nx
 import random
 
 # ─── App Config ───────────────────────────────────────────────────────────────
@@ -11,7 +10,9 @@ st.title("Simlane Strategic Scenario Simulator")
 # ─── Sidebar Inputs ──────────────────────────────────────────────────────────
 with st.sidebar.expander("1) Buyer Base Settings", expanded=True):
     st.markdown("#### Required CSV Columns:")
-    st.code("id,segment,recency,frequency,monetary,nps,churn_risk,referral_count,brand")
+    st.code(
+        "id,segment,recency,frequency,monetary,nps,churn_risk,referral_count,brand"
+    )
     sample_csv = (
         "id,segment,recency,frequency,monetary,nps,churn_risk,referral_count,brand\n"
         "0,Price Sensitive,10,5,200.0,8,0.1,3,Simlane\n"
@@ -21,98 +22,68 @@ with st.sidebar.expander("1) Buyer Base Settings", expanded=True):
     st.download_button("📥 Download Sample CSV", data=sample_csv, file_name="sample_buyers.csv")
     upload = st.file_uploader("Upload Buyer Data (CSV)", type=["csv"])
     if upload:
-        df_upload = pd.read_csv(upload)
-        st.success(f"Loaded {len(df_upload)} buyers from CSV")
-    n_buyers = st.number_input("Number of Buyers (if no CSV)", 100, 5000, 500, step=100)
-    weeks    = st.slider("Simulation Weeks", 1, 20, 5)
+        df = pd.read_csv(upload)
+    else:
+        # synthetic fallback
+        n = st.number_input("Number of Buyers", 100, 5000, 500, step=100)
+        segments = ["Tech Enthusiast","Eco-Conscious","Loyalist","Price Sensitive","Trend Follower"]
+        df = pd.DataFrame({
+            'id': range(n),
+            'segment': [random.choice(segments) for _ in range(n)],
+            'recency': np.random.randint(1,366,n),
+            'frequency': np.random.randint(1,51,n),
+            'monetary': np.round(np.random.uniform(10,1000,n),2),
+            'nps': np.random.randint(0,11,n),
+            'churn_risk': np.round(np.random.random(n),2),
+            'referral_count': np.random.randint(0,11,n),
+        })
+        df['brand'] = np.random.choice(['Simlane','Rival'], size=n)
+    weeks = st.slider("Simulation Weeks", 1, 20, 5)
 
-# ─── Buyer Class & Population ─────────────────────────────────────────────────
-class Buyer:
-    def __init__(self, idx, profile):
-        self.id             = idx
-        self.segment        = profile.get("segment")
-        self.recency        = profile.get("recency")
-        self.frequency      = profile.get("frequency")
-        self.monetary       = profile.get("monetary")
-        self.nps            = profile.get("nps")
-        self.churn_risk     = profile.get("churn_risk")
-        self.referral_count = profile.get("referral_count")
-        # initial brand from data or random
-        self.brand          = profile.get("brand", random.choice(["Simlane","Rival"]))
-
-# ─── Build Buyer Population ────────────────────────────────────────────────────
-def build_buyers_from_csv(df):
-    buyers = []
-    for _, row in df.iterrows():
-        profile = row.to_dict()
-        buyers.append(Buyer(row.get("id", len(buyers)), profile))
-    # build social graph for reference
-    G = nx.watts_strogatz_graph(len(buyers), k=min(6,len(buyers)-1), p=0.3)
-    for i, b in enumerate(buyers):
-        b.friends = list(G.neighbors(i))
-    return buyers
-
-def build_buyers(n):
-    buyers = []
-    segments = ["Tech Enthusiast","Eco-Conscious","Loyalist","Price Sensitive","Trend Follower"]
-    for i in range(n):
-        profile = {
-            "segment": random.choice(segments),
-            "recency": random.randint(1,365),
-            "frequency": random.randint(1,50),
-            "monetary": round(random.uniform(10,1000),2),
-            "nps": random.randint(0,10),
-            "churn_risk": round(random.random(),2),
-            "referral_count": random.randint(0,10),
-            "brand": random.choice(["Simlane","Rival"]),
-        }
-        buyers.append(Buyer(i, profile))
-    G = nx.watts_strogatz_graph(n, k=min(6,n-1), p=0.3)
-    for i, b in enumerate(buyers):
-        b.friends = list(G.neighbors(i))
-    return buyers
+# ─── Dynamic Utility Weights ──────────────────────────────────────────────────
+with st.sidebar.expander("2) Utility Weights", expanded=False):
+    st.markdown("**Set the weight for each trait**")
+    # detect numeric traits excluding id, segment, brand
+    trait_cols = [c for c in df.columns if c not in ['id','segment','brand'] and pd.api.types.is_numeric_dtype(df[c])]
+    weights = {}
+    for col in trait_cols:
+        default = 1.0
+        weights[col] = st.slider(f"{col} weight", 0.0, 2.0, default, 0.05)
 
 # ─── Utility Calculation ───────────────────────────────────────────────────────
-def compute_utils(buyers):
-    # normalization constants
-    max_rec, max_freq, max_mon, max_nps, max_ref = 365, 50, 1000.0, 10, 10
-    utils = []
-    for b in buyers:
-        rec_term   = 1 - b.recency/max_rec
-        freq_term  = b.frequency/max_freq
-        mon_term   = b.monetary/max_mon
-        nps_term   = b.nps/max_nps
-        churn_term = 1 - b.churn_risk
-        ref_term   = b.referral_count/max_ref
-        utils.append(rec_term + freq_term + mon_term + nps_term + churn_term + ref_term)
-    return np.array(utils)
+def compute_utilities(data, weights):
+    util = np.zeros(len(data))
+    for col, w in weights.items():
+        series = data[col].astype(float)
+        norm = (series - series.min()) / (series.max() - series.min() + 1e-9)
+        # invert churn-like metrics
+        if 'churn' in col.lower() or 'risk' in col.lower():
+            norm = 1 - norm
+        util += w * norm
+    return util
 
 # ─── Run Simulation & Display ─────────────────────────────────────────────────
 if st.button("Run Simulation"):
-    # load or generate buyers
-    buyers = build_buyers_from_csv(df_upload) if 'df_upload' in globals() else build_buyers(n_buyers)
     # compute utilities
-    utils = compute_utils(buyers)
-    # benchmark utility (e.g., mean)
-    benchmark = np.mean(utils)
-    # assign brand based on utility
-    for i, b in enumerate(buyers):
-        b.brand = "Simlane" if utils[i] >= benchmark else "Rival"
-    # summary table
-    df = pd.DataFrame([vars(b) for b in buyers])
-    share = df['brand'].value_counts(normalize=True).mul(100).round(1)
+    df['utility'] = compute_utilities(df, weights)
+    # assign brand based on average utility
+    benchmark = df['utility'].mean()
+    df['brand'] = np.where(df['utility'] >= benchmark, 'Simlane', 'Rival')
 
+    # display metrics summary
+    st.subheader("Buyer Metrics Summary")
+    st.dataframe(df[trait_cols].describe().round(2))
+
+    # utility distribution
+    st.subheader("Utility Distribution")
+    st.line_chart(df.set_index('id')['utility'])
+
+    # final share
     st.subheader("Final Brand Share (%)")
+    share = df['brand'].value_counts(normalize=True).mul(100).round(1)
     st.table(share.to_frame('Percent'))
 
-    st.subheader("Buyer Utility Distribution")
-    util_df = pd.DataFrame({
-        'Buyer ID': [b.id for b in buyers],
-        'Utility' : np.round(utils, 3)
-    }).set_index('Buyer ID')
-    st.line_chart(util_df)
-
-    st.subheader("Sample Buyer Data & Utility")
-    sample_df = df[['id','segment','recency','frequency','monetary','nps','churn_risk','referral_count','brand']].copy()
-    sample_df['utility'] = np.round(utils,3)
-    st.dataframe(sample_df.sample(min(20, len(sample_df))))
+    # sample output
+    st.subheader("Sample Buyers & Utility")
+    display_cols = ['id','segment'] + trait_cols + ['utility','brand']
+    st.dataframe(df[display_cols].sample(min(20,len(df))))
