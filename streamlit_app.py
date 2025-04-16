@@ -8,8 +8,8 @@ col1, col2 = st.columns([2, 1])
 with col1:
     st.title("🧠 Simlane Strategic Scenario Simulator")
 with col2:
-    st.metric(label="📊 Rounds Simulated", value=3)
-    st.metric(label="👥 Agents", value=500)
+    st.metric(label="📊 Rounds Simulated", value=time_steps if 'time_steps' in locals() else 3)
+    st.metric(label="👥 Agents", value=len(df_input) if use_uploaded_data else 500)
 st.subheader("Customer Switching Behavior Based on Market Events")
 
 # === Step 0: Load or Generate Agent Data ===
@@ -38,7 +38,8 @@ if upload is not None:
         st.error(f"Error reading file: {e}. Generating synthetic agents instead.")
 
 if not use_uploaded_data:
-    st.markdown("Or answer a few quick questions to generate your audience:")
+    with st.expander("🎯 Audience Variables", expanded=False):
+        st.markdown("Or answer a few quick questions to generate your audience:")
     urban_pct = st.slider("% Urban Customers", 0, 100, 60)
     high_income_pct = st.slider("% High Income (>$100k)", 0, 100, 30)
     time_steps = st.slider("🕒 Number of Simulation Rounds (Weeks)", 1, 10, 3)
@@ -65,6 +66,8 @@ import networkx as nx
 
 def generate_population(n=500):
     segment_profiles = [
+        {"name": "Tech Enthusiast", "weight": 0.2, "price_sensitivity": 0.3, "trendiness": 0.8},
+        {"name": "Eco-Conscious", "weight": 0.2, "price_sensitivity": 0.4, "trendiness": 0.5},
         {"name": "Loyalist", "weight": 0.35, "price_sensitivity": 0.2, "trendiness": 0.1},
         {"name": "Price Sensitive", "weight": 0.4, "price_sensitivity": 0.9, "trendiness": 0.3},
         {"name": "Trend Follower", "weight": 0.25, "price_sensitivity": 0.4, "trendiness": 0.9}
