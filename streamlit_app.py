@@ -34,8 +34,8 @@ if upload is not None:
 if not use_uploaded_data:
     st.markdown("### 🎯 Audience Variables")
     urban_pct = st.slider("% Urban Customers", 0, 100, 60)
-        high_income_pct = st.slider("% High Income (>$100k)", 0, 100, 30)
-        time_steps = st.slider("🕒 Number of Simulation Rounds (Weeks)", 1, 10, 3)
+    high_income_pct = st.slider("% High Income (>$100k)", 0, 100, 30)
+    time_steps = st.slider("🕒 Number of Simulation Rounds (Weeks)", 1, 10, 3)
 
 # === Brand Trait Configuration ===
 st.markdown("---")
