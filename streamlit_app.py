@@ -4,13 +4,7 @@ import random
 import io
 
 st.set_page_config(page_title="Simlane Strategic Simulator", layout="centered")
-col1, col2 = st.columns([2, 1])
-with col1:
-    st.title("🧠 Simlane Strategic Scenario Simulator")
-with col2:
-    st.metric(label="📊 Rounds Simulated", value=time_steps if 'time_steps' in locals() else 3)
-    st.metric(label="👥 Agents", value=len(df_input) if use_uploaded_data else 500)
-st.subheader("Customer Switching Behavior Based on Market Events")
+
 
 # === Step 0: Load or Generate Agent Data ===
 with st.expander("📁 Load Buyer Data or Generate Synthetic Population", expanded=False):
@@ -171,6 +165,14 @@ event = st.selectbox(
     ["Price Cut", "Influencer Boost", "Bad PR"],
     help="Simulate a single pressure event on brand loyalty. More complex campaigns coming soon."
 )
+
+# === Metrics Display (after variables exist) ===
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        st.title("Simlane Strategic Scenario Simulator")
+    with col2:
+        st.metric(label="📊 Rounds Simulated", value=time_steps)
+        st.metric(label="👥 Agents", value=len(pop))
 
 # === Run Simulation ===
 if st.button("Run Simulation"):
