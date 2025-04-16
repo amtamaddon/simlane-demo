@@ -4,7 +4,13 @@ import random
 import io
 
 st.set_page_config(page_title="Simlane Strategic Simulator", layout="centered")
-
+col1, col2 = st.columns([2, 1])
+with col1:
+    st.title("🧠 Simlane Strategic Scenario Simulator")
+with col2:
+    st.metric(label="📊 Rounds Simulated", value=3)
+    st.metric(label="👥 Agents", value=500)
+st.subheader("Customer Switching Behavior Based on Market Events")
 
 # === Step 0: Load or Generate Agent Data ===
 with st.expander("📁 Load Buyer Data or Generate Synthetic Population", expanded=False):
@@ -32,7 +38,7 @@ if upload is not None:
         st.error(f"Error reading file: {e}. Generating synthetic agents instead.")
 
 if not use_uploaded_data:
-    st.markdown("### 🎯 Audience Variables")
+    st.markdown("Or answer a few quick questions to generate your audience:")
     urban_pct = st.slider("% Urban Customers", 0, 100, 60)
     high_income_pct = st.slider("% High Income (>$100k)", 0, 100, 30)
     time_steps = st.slider("🕒 Number of Simulation Rounds (Weeks)", 1, 10, 3)
@@ -59,8 +65,6 @@ import networkx as nx
 
 def generate_population(n=500):
     segment_profiles = [
-        {"name": "Tech Enthusiast", "weight": 0.2, "price_sensitivity": 0.3, "trendiness": 0.8},
-        {"name": "Eco-Conscious", "weight": 0.2, "price_sensitivity": 0.4, "trendiness": 0.5},
         {"name": "Loyalist", "weight": 0.35, "price_sensitivity": 0.2, "trendiness": 0.1},
         {"name": "Price Sensitive", "weight": 0.4, "price_sensitivity": 0.9, "trendiness": 0.3},
         {"name": "Trend Follower", "weight": 0.25, "price_sensitivity": 0.4, "trendiness": 0.9}
@@ -165,8 +169,6 @@ event = st.selectbox(
     help="Simulate a single pressure event on brand loyalty. More complex campaigns coming soon."
 )
 
-st.title("Simlane Strategic Scenario Simulator")
-
 # === Run Simulation ===
 if st.button("Run Simulation"):
     pop = df_input.copy() if use_uploaded_data else generate_population()
@@ -196,16 +198,10 @@ if st.button("Run Simulation"):
     st.dataframe(delta_df.set_index("Brand"))
 
     total_agents = df_timeline.iloc[-1].sum()
-    switch_ids = set()
-    for log in logs_all:
-        if "switched" in log:
-            parts = log.split("Agent ")[1]
-            agent_id = parts.split(" ")[0]
-            switch_ids.add(agent_id)
-    switch_count = len(switch_ids)
+    switch_count = sum(1 for log in logs_all if "switched" in log)
     rate = switch_count / total_agents * 100
     winning_brand = delta_df.iloc[0]['Brand']
-    st.markdown(f"**Summary:** Over {time_steps} rounds, {switch_count} agents (~{rate:.1f}%) switched brands. The winning brand was **{winning_brand}**.")
+    st.markdown(f"**🧠 Summary:** Over {time_steps} rounds, {switch_count} agents (~{rate:.1f}%) switched brands. The winning brand was **{winning_brand}**.")
 
 
     if logs_all:
