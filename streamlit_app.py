@@ -1,13 +1,14 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import networkx as nx
 import random
 
 # ─── App Config ───────────────────────────────────────────────────────────────
 st.set_page_config("Simlane Strategic Simulator", layout="wide")
 st.title("Simlane Strategic Scenario Simulator")
 
-# ─── Sidebar Inputs ──────────────────────────────────────────────────────────
+# ─── Sidebar: Buyer Base Settings ─────────────────────────────────────────────
 with st.sidebar.expander("1) Buyer Base Settings", expanded=True):
     st.markdown("#### Required CSV Columns:")
     st.code("id,segment,recency,frequency,monetary,nps,churn_risk,referral_count,brand")
@@ -18,86 +19,82 @@ with st.sidebar.expander("1) Buyer Base Settings", expanded=True):
         "2,Trend Follower,30,10,500.0,7,0.2,5,Simlane"
     )
     st.download_button("📥 Download Sample CSV", data=sample_csv, file_name="sample_buyers.csv")
-
     upload = st.file_uploader("Upload Buyer Data (CSV)", type=["csv"])
     if upload:
         df = pd.read_csv(upload)
     else:
         n = st.number_input("Number of Buyers", 100, 5000, 500, step=100)
-        recency_mean = st.slider("Avg Recency (days)", 1, 365, 30)
-        recency_std  = st.slider("Recency Std Dev", 0, 182, 10)
-        freq_mean    = st.slider("Avg Frequency (# purchases)", 1, 50, 5)
-        freq_std     = st.slider("Frequency Std Dev", 0, 25, 2)
-        mon_mean     = st.slider("Avg Monetary ($)", 0.0, 10000.0, 200.0, step=10.0)
-        mon_std      = st.slider("Monetary Std Dev", 0.0, 5000.0, 100.0, step=10.0)
-        nps_mean     = st.slider("Avg NPS", 0, 10, 7)
-        nps_std      = st.slider("NPS Std Dev", 0, 5, 1)
-        churn_mean   = st.slider("Avg Churn Risk", 0.0, 1.0, 0.2, 0.05)
-        churn_std    = st.slider("Churn Risk Std Dev", 0.0, 0.5, 0.1, 0.05)
-        ref_mean     = st.slider("Avg Referrals", 0, 20, 2)
-        ref_std      = st.slider("Referral Std Dev", 0, 10, 1)
-
-        segments = ["Tech Enthusiast", "Eco-Conscious", "Loyalist", "Price Sensitive", "Trend Follower"]
+        segments = ["Tech Enthusiast","Eco-Conscious","Loyalist","Price Sensitive","Trend Follower"]
         df = pd.DataFrame({
             'id': range(n),
             'segment': [random.choice(segments) for _ in range(n)],
-            'recency': np.clip(np.random.normal(recency_mean, recency_std, n), 1, 365).astype(int),
-            'frequency': np.clip(np.random.normal(freq_mean, freq_std, n), 1, 50).astype(int),
-            'monetary': np.clip(np.random.normal(mon_mean, mon_std, n), 0, None).round(2),
-            'nps': np.clip(np.random.normal(nps_mean, nps_std, n), 0, 10).astype(int),
-            'churn_risk': np.clip(np.random.normal(churn_mean, churn_std, n), 0, 1).round(2),
-            'referral_count': np.clip(np.random.normal(ref_mean, ref_std, n), 0, None).astype(int),
+            'recency': np.random.randint(1,366,n),
+            'frequency': np.random.randint(1,51,n),
+            'monetary': np.round(np.random.uniform(10,1000,n),2),
+            'nps': np.random.randint(0,11,n),
+            'churn_risk': np.round(np.random.random(n),2),
+            'referral_count': np.random.randint(0,11,n),
+            'brand': np.random.choice(['Simlane','Rival'], n)
         })
-        df['brand'] = np.random.choice(['Simlane', 'Rival'], size=n)
+    weeks = st.slider("Simulation Rounds", 1, 20, 5)
 
-weeks = st.slider("Simulation Weeks", 1, 20, 5)
-
-# ─── Utility Weights ──────────────────────────────────────────────────────────
+# ─── Sidebar: Utility Weights ──────────────────────────────────────────────────
 with st.sidebar.expander("2) Utility Weights", expanded=False):
-    recency_w  = st.slider("Recency Weight", 0.0, 2.0, 1.0, 0.05)
-    frequency_w= st.slider("Frequency Weight", 0.0, 2.0, 1.0, 0.05)
-    monetary_w = st.slider("Monetary Weight", 0.0, 2.0, 1.0, 0.05)
-    nps_w      = st.slider("NPS Weight", 0.0, 2.0, 1.0, 0.05)
-    churn_w    = st.slider("Churn Risk Weight", 0.0, 2.0, 1.0, 0.05)
-    referral_w = st.slider("Referral Weight", 0.0, 2.0, 1.0, 0.05)
+    st.markdown("**Adjust importance of each trait for personal preference**")
+    recency_w   = st.slider("Recency Weight", 0.0, 2.0, 1.0, 0.05)
+    frequency_w = st.slider("Frequency Weight", 0.0, 2.0, 1.0, 0.05)
+    monetary_w  = st.slider("Monetary Weight", 0.0, 2.0, 1.0, 0.05)
+    nps_w       = st.slider("NPS Weight", 0.0, 2.0, 1.0, 0.05)
+    churn_w     = st.slider("Churn Risk Weight", 0.0, 2.0, 1.0, 0.05)
+    referral_w  = st.slider("Referral Weight", 0.0, 2.0, 1.0, 0.05)
 
-# ─── Utility Calculation ───────────────────────────────────────────────────────
-def compute_utilities(data, w):
-    max_vals = {
-        'recency': 365, 'frequency': 50, 'monetary': data['monetary'].max(),
-        'nps': 10, 'churn_risk': 1, 'referral_count': data['referral_count'].max()
-    }
-    util = (
-        w['recency'] * (1 - data['recency'] / max_vals['recency']) +
-        w['frequency'] * (data['frequency'] / max_vals['frequency']) +
-        w['monetary'] * (data['monetary'] / max_vals['monetary']) +
-        w['nps'] * (data['nps'] / max_vals['nps']) +
-        w['churn_risk'] * (1 - data['churn_risk'] / max_vals['churn_risk']) +
-        w['referral_count'] * (data['referral_count'] / max_vals['referral_count'])
-    )
-    return util
+# ─── Build Social Graph ───────────────────────────────────────────────────────
+n = len(df)
+G = nx.watts_strogatz_graph(n, k=min(6,n-1), p=0.3)
+neighbors = {i: list(G.neighbors(i)) for i in range(n)}
 
-# ─── Run Simulation & Display ─────────────────────────────────────────────────
+# ─── Voting Loop Simulation ───────────────────────────────────────────────────
+def compute_personal_score(row):
+    # normalize traits
+    rec = 1 - row.recency/365
+    freq = row.frequency/50
+    mon = row.monetary/row.monetary.max() if 'monetary' in row else 0
+    nps = row.nps/10
+    churn = 1 - row.churn_risk
+    ref = row.referral_count/row.referral_count.max()
+    # weighted sum
+    return (recency_w*rec + frequency_w*freq + monetary_w*mon +
+            nps_w*nps + churn_w*churn + referral_w*ref)
+
 if st.button("Run Simulation"):
-    weights = {
-        'recency': recency_w, 'frequency': frequency_w,
-        'monetary': monetary_w, 'nps': nps_w,
-        'churn_risk': churn_w, 'referral_count': referral_w
-    }
-    df['utility'] = compute_utilities(df, weights)
-    benchmark = df['utility'].mean()
-    df['brand'] = np.where(df['utility'] >= benchmark, 'Simlane', 'Rival')
-
-    st.subheader("Buyer Metrics Summary")
-    st.dataframe(df[['recency','frequency','monetary','nps','churn_risk','referral_count']].describe().round(2))
-
-    st.subheader("Utility Distribution")
-    st.line_chart(df.set_index('id')['utility'])
-
-    st.subheader("Final Brand Share (%)")
-    share = df['brand'].value_counts(normalize=True).mul(100).round(1)
-    st.table(share.to_frame('Percent'))
-
-    st.subheader("Sample Buyers & Utility")
-    sample_cols = ['id','segment','recency','frequency','monetary','nps','churn_risk','referral_count','utility','brand']
-    st.dataframe(df[sample_cols].sample(min(20, len(df))))
+    # initialize brands
+    brands = df['brand'].tolist()
+    timeline = []
+    for _ in range(weeks):
+        new_brands = []
+        personal_scores = df.apply(compute_personal_score, axis=1)
+        # each agent votes based on personal + peer
+        for i in range(n):
+            # personal vote
+            p_vote = 'Simlane' if personal_scores[i] >= personal_scores.mean() else 'Rival'
+            # peer vote
+            peers = neighbors[i]
+            sim_count = sum(brands[j]=='Simlane' for j in peers)
+            r_count = len(peers) - sim_count
+            peer_vote = 'Simlane' if sim_count >= r_count else 'Rival'
+            # final vote: tie-break toward personal
+            vote = p_vote if p_vote==peer_vote else p_vote
+            new_brands.append(vote)
+        brands = new_brands
+        sim_share = brands.count('Simlane')
+        timeline.append(sim_share)
+    # results
+    df_tl = pd.DataFrame({'Week': range(1, weeks+1), 'Simlane': timeline})
+    st.subheader("Voting Simulation Results")
+    st.line_chart(df_tl.set_index('Week'))
+    final_share = brands.count('Simlane')/n*100
+    st.markdown(f"**Final Simlane Share: {final_share:.1f}%**")
+    # sample final brands
+    df['final_brand'] = brands
+    st.subheader("Sample Final Assignments")
+    st.dataframe(df[['id','segment','final_brand']].sample(min(20,n)))
