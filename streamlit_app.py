@@ -57,25 +57,36 @@ with st.sidebar.expander("2) Utility Weights", expanded=False):
     churn_w     = st.slider("Churn Risk Weight", 0.0, 2.0, 1.0, 0.05)
     referral_w  = st.slider("Referral Count Weight", 0.0, 2.0, 1.0, 0.05)
 
+# ─── Sidebar: Simulation Settings ───────────────────────────────────────────────
+with st.sidebar.expander("3) Simulation Settings", expanded=False):
+    weeks = st.slider("🕒 Number of Simulation Rounds (Weeks)", 1, 10, 3)
+
 # ─── Simulation ──────────────────────────────────────────────────────────────
 def compute_score(row, df_max):
-    rec = 1 - row['recency']/365
-    freq = row['frequency']/50
-    mon = row['monetary']/df_max['monetary'] if df_max['monetary']>0 else 0
-    nps = row['nps']/10
+    rec   = 1 - row['recency'] / 365
+    freq  = row['frequency'] / 50
+    mon   = row['monetary'] / df_max['monetary'] if df_max['monetary'] > 0 else 0
+    nps   = row['nps'] / 10
     churn = 1 - row['churn_risk']
-    ref = row['referral_count']/df_max['referral_count'] if df_max['referral_count']>0 else 0
-    return recency_w*rec + frequency_w*freq + monetary_w*mon + nps_w*nps + churn_w*churn + referral_w*ref
+    ref   = row['referral_count'] / df_max['referral_count'] if df_max['referral_count'] > 0 else 0
+    return (
+        recency_w * rec
+        + frequency_w * freq
+        + monetary_w  * mon
+        + nps_w       * nps
+        + churn_w     * churn
+        + referral_w  * ref
+    )
 
 if st.button("Run Simulation"):
-    # precompute maxima
+    # Precompute maxima
     df_max = {
         'monetary': df['monetary'].max(),
         'referral_count': df['referral_count'].max()
     }
-    # compute utilities
+
+    # Compute utilities & final brand
     df['utility'] = df.apply(lambda r: compute_score(r, df_max), axis=1)
-    # brand assignment
     benchmark = df['utility'].mean()
     df['final_brand'] = np.where(df['utility'] >= benchmark, 'Simlane', 'Rival')
 
@@ -89,19 +100,19 @@ if st.button("Run Simulation"):
     st.bar_chart(share)
 
     # Narrative
-    sim_start = df['brand'].value_counts(normalize=True).get('Simlane',0)*100
-    sim_end = share.get('Simlane',0)
+    sim_start = df['brand'].value_counts(normalize=True).get('Simlane', 0) * 100
+    sim_end   = share.get('Simlane', 0)
     st.subheader("📖 Narrative Summary")
     st.markdown(
-        f"Over **{weeks}** simulation rounds, Simlane’s share shifted from **{sim_start:.1f}%** to **{sim_end:.1f}%** among **{len(df)}** buyers, "
-        f"a net change of **{(sim_end - sim_start):.1f} percentage points**."
+        f"Over **{weeks}** simulation rounds, Simlane’s share shifted from **{sim_start:.1f}%** "
+        f"to **{sim_end:.1f}%** among **{len(df)}** buyers, a net change of **{sim_end - sim_start:.1f}** percentage points."
     )
     st.markdown(
-        "- **Key Insights:** Recency and churn risk are the strongest indicators of brand switching.
-"
-        "- **Segment Highlights:** See the segment-level table below for which groups performed best or worst.
-"
-        "- **Recommendation:** Run targeted re-engagement campaigns for buyers with low recency (<30 days) and high churn risk (>0.5)."
+        """
+- **Key Insights:** Recency and churn risk are the strongest indicators of brand switching.
+- **Segment Highlights:** See the segment-level table below for which groups performed best or worst.
+- **Recommendation:** Run targeted re-engagement campaigns for buyers with low recency (<30 days) and high churn risk (>0.5).
+"""
     )
 
     # Segment outcomes
@@ -111,5 +122,5 @@ if st.button("Run Simulation"):
 
     # Sample assignments
     st.subheader("Sample Buyer Assignments")
-    display = df.sample(min(20,len(df)))[['id','segment','final_brand','utility']]
+    display = df.sample(min(20, len(df)))[['id','segment','final_brand','utility']]
     st.dataframe(display)
