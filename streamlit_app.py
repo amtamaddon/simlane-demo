@@ -4,11 +4,16 @@ import random
 import io
 
 st.set_page_config(page_title="Simlane Strategic Simulator", layout="centered")
-st.title("🧠 Simlane Strategic Scenario Simulator")
+col1, col2 = st.columns([2, 1])
+with col1:
+    st.title("🧠 Simlane Strategic Scenario Simulator")
+with col2:
+    st.metric(label="📊 Rounds Simulated", value=3)
+    st.metric(label="👥 Agents", value=500)
 st.subheader("Customer Switching Behavior Based on Market Events")
 
 # === Step 0: Load or Generate Agent Data ===
-st.markdown("### 📁 Load Buyer Data or Generate Synthetic Population")
+with st.expander("📁 Load Buyer Data or Generate Synthetic Population", expanded=False):
 st.markdown("#### Required CSV Columns:")
 st.code("id,segment,brand,income,origin,switching_cost")
 
@@ -36,7 +41,8 @@ if not use_uploaded_data:
     time_steps = st.slider("🕒 Number of Simulation Rounds (Weeks)", 1, 10, 3)
 
 # === Brand Trait Configuration ===
-st.markdown("### 🔧 Brand Trait Configuration")
+st.markdown("---")
+with st.expander("🔧 Brand Trait Configuration", expanded=False):
 simlane_traits = {
     "Price Tier": st.slider("Simlane Price Tier (1=Low, 5=High)", 1, 5, 3),
     "Innovation": st.slider("Simlane Innovation Index (0-1)", 0.0, 1.0, 0.8),
@@ -154,7 +160,11 @@ def simulate_event(population_df, event, simlane_traits, rival_traits):
     return new_df, logs
 
 # === Scenario Selection ===
-event = st.selectbox("Choose a strategic event to simulate:", ["Price Cut", "Influencer Boost", "Bad PR"])
+event = st.selectbox(
+    "Choose a strategic event to simulate:",
+    ["Price Cut", "Influencer Boost", "Bad PR"],
+    help="Simulate a single pressure event on brand loyalty. More complex campaigns coming soon."
+)
 
 # === Run Simulation ===
 if st.button("Run Simulation"):
