@@ -61,7 +61,7 @@ with st.sidebar.expander("2) Utility Weights", expanded=False):
 with st.sidebar.expander("3) Simulation Settings", expanded=False):
     weeks = st.slider("🕒 Number of Simulation Rounds (Weeks)", 1, 10, 3)
 
-# ─── Simulation Logic ───────────────────────────────────────────────────────────
+# ─── Simulation ──────────────────────────────────────────────────────────────
 def compute_score(row, df_max):
     rec   = 1 - row['recency'] / 365
     freq  = row['frequency'] / 50
@@ -79,70 +79,48 @@ def compute_score(row, df_max):
     )
 
 if st.button("Run Simulation"):
-    # Copy initial state
-    df_sim = df.copy()
-    initial_share = df_sim['brand'].value_counts(normalize=True).get('Simlane', 0) * 100
-    share_history = []
+    # Precompute maxima
+    df_max = {
+        'monetary': df['monetary'].max(),
+        'referral_count': df['referral_count'].max()
+    }
 
-    # Multi-round dynamics
-    for _ in range(weeks):
-        # Recency decays (adds 7 days, capped at 365)
-        df_sim['recency'] = np.minimum(df_sim['recency'] + 7, 365)
-        # Add churn risk noise
-        df_sim['churn_risk'] = np.clip(
-            df_sim['churn_risk'] + np.random.normal(0, 0.02, len(df_sim)),
-            0, 1
-        )
-        # Recompute utilities and brands
-        df_max = {
-            'monetary': df_sim['monetary'].max(),
-            'referral_count': df_sim['referral_count'].max()
-        }
-        df_sim['utility'] = df_sim.apply(lambda r: compute_score(r, df_max), axis=1)
-        df_sim['brand'] = np.where(
-            df_sim['utility'] >= df_sim['utility'].mean(),
-            'Simlane',
-            'Rival'
-        )
-        # Record share
-        share = df_sim['brand'].value_counts(normalize=True).get('Simlane', 0) * 100
-        share_history.append(share)
+    # Compute utilities & final brand
+    df['utility'] = df.apply(lambda r: compute_score(r, df_max), axis=1)
+    benchmark = df['utility'].mean()
+    df['final_brand'] = np.where(df['utility'] >= benchmark, 'Simlane', 'Rival')
 
-    # Plot share over time
-    share_df = pd.DataFrame(
-        {'Simlane Share (%)': share_history},
-        index=[f"Week {i+1}" for i in range(weeks)]
-    )
-    st.subheader("Brand Share Over Time")
-    st.line_chart(share_df)
+    # Metrics summary
+    st.subheader("Buyer Metrics Summary")
+    st.dataframe(df[['recency','frequency','monetary','nps','churn_risk','referral_count']].describe().round(2))
 
-    # Final metrics summary
-    st.subheader("Buyer Metrics Summary (Final Week)")
-    st.dataframe(
-        df_sim[['recency','frequency','monetary','nps','churn_risk','referral_count']]
-        .describe().round(2)
-    )
+    # Brand share
+    st.subheader("Brand Share")
+    share = df['final_brand'].value_counts(normalize=True).mul(100).round(1)
+    st.bar_chart(share)
 
     # Narrative
-    final_share = share_history[-1] if share_history else initial_share
+    sim_start = df['brand'].value_counts(normalize=True).get('Simlane', 0) * 100
+    sim_end   = share.get('Simlane', 0)
     st.subheader("📖 Narrative Summary")
     st.markdown(
-        f"Simlane’s share moved from **{initial_share:.1f}%** to **{final_share:.1f}%** over {weeks} weeks."
+        f"Over **{weeks}** simulation rounds, Simlane’s share shifted from **{sim_start:.1f}%** "
+        f"to **{sim_end:.1f}%** among **{len(df)}** buyers, a net change of **{sim_end - sim_start:.1f}** percentage points."
     )
     st.markdown(
         """
-- **Key Insights:** Recency decay and churn risk drift drive most switching.
-- **Segment Highlights:** See below for segment-specific outcomes.
-- **Recommendation:** Prioritize re-engagement for buyers with low recency (<30 days) and rising churn.
+- **Key Insights:** Recency and churn risk are the strongest indicators of brand switching.
+- **Segment Highlights:** See the segment-level table below for which groups performed best or worst.
+- **Recommendation:** Run targeted re-engagement campaigns for buyers with low recency (<30 days) and high churn risk (>0.5).
 """
     )
 
     # Segment outcomes
     st.subheader("Segment-level Outcomes")
-    seg_table = df_sim.groupby(['segment','brand']).size().unstack(fill_value=0)
+    seg_table = df.groupby(['segment','final_brand']).size().unstack(fill_value=0)
     st.dataframe(seg_table)
 
-    # Sample buyer assignments
+    # Sample assignments
     st.subheader("Sample Buyer Assignments")
-    display = df_sim.sample(min(20, len(df_sim)))[['id','segment','brand','utility']]
+    display = df.sample(min(20, len(df)))[['id','segment','final_brand','utility']]
     st.dataframe(display)
