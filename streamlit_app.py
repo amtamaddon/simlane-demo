@@ -11,12 +11,12 @@ st.title("Simlane Strategic Scenario Simulator")
 # ─── Sidebar Inputs ──────────────────────────────────────────────────────────
 with st.sidebar.expander("1) Buyer Base Settings", expanded=True):
     st.markdown("#### Required CSV Columns:")
-    st.code("id,segment,price_sensitivity,trendiness,income,origin,switch_cost,influence,brand")
+    st.code("id,segment,recency,frequency,monetary,nps,churn_risk,referral_count,brand")
     sample_csv = (
-        "id,segment,price_sensitivity,trendiness,income,origin,switch_cost,influence,brand\n"
-        "0,Price Sensitive,0.9,0.3,High,Urban,0.4,5,Simlane\n"
-        "1,Loyalist,0.2,0.1,Low,Rural,0.8,3,Rival\n"
-        "2,Trend Follower,0.4,0.9,High,Urban,0.3,8,Simlane"
+        "id,segment,recency,frequency,monetary,nps,churn_risk,referral_count,brand\n"
+        "0,Price Sensitive,10,5,200.0,8,0.1,3,Simlane\n"
+        "1,Loyalist,180,2,50.5,9,0.05,1,Rival\n"
+        "2,Trend Follower,30,10,500.0,7,0.2,5,Simlane"
     )
     st.download_button("📥 Download Sample CSV", data=sample_csv, file_name="sample_buyers.csv")
     upload = st.file_uploader("Upload Buyer Data (CSV)", type=["csv"])
@@ -24,137 +24,105 @@ with st.sidebar.expander("1) Buyer Base Settings", expanded=True):
         df_upload = pd.read_csv(upload)
         st.success(f"Loaded {len(df_upload)} buyers from CSV")
     n_buyers     = st.number_input("Number of Buyers (if no CSV)", 100, 5000, 500, step=100)
-    urban_pct    = st.slider("% Urban Buyers", 0, 100, 60)
-    high_inc_pct = st.slider("% High‑Income Buyers", 0, 100, 30)
     weeks        = st.slider("Simulation Weeks", 1, 20, 5)
 
-with st.sidebar.expander("2) Brand Traits", expanded=False):
-    def trait_sliders(label, defaults):
-        return {k: st.slider(f"{label} {k}", vmin, vmax, default, step)
-                for (k, (vmin, vmax, default, step)) in defaults.items()}
-
-    simlane_traits = trait_sliders("Simlane", {
-        "Price Tier": (1, 5, 3, 1),
-        "Innovation": (0.0, 1.0, 0.8, 0.05),
-        "Trust":      (0.0, 1.0, 0.75, 0.05),
-        "Influencer": (0.0, 1.0, 0.4, 0.05),
-    })
-    rival_traits = trait_sliders("Rival", {
-        "Price Tier": (1, 5, 2, 1),
-        "Innovation": (0.0, 1.0, 0.5, 0.05),
-        "Trust":      (0.0, 1.0, 0.6, 0.05),
-        "Influencer": (0.0, 1.0, 0.7, 0.05),
-    })
+with st.sidebar.expander("2) Buyer Metrics Weights", expanded=False):
+    # Realistic metrics sliders with 'Unknown' option
+    recency_w = st.slider("Recency Weight", 0.0, 1.0, 0.5, 0.05)
+    rec_none  = st.checkbox("Recency Unknown", key="rec_none")
+    freq_w    = st.slider("Frequency Weight", 0.0, 1.0, 0.5, 0.05)
+    freq_none = st.checkbox("Frequency Unknown", key="freq_none")
+    mon_w     = st.slider("Monetary Weight", 0.0, 1.0, 0.5, 0.05)
+    mon_none  = st.checkbox("Monetary Unknown", key="mon_none")
+    nps_w     = st.slider("NPS Weight", 0.0, 1.0, 0.5, 0.05)
+    nps_none  = st.checkbox("NPS Unknown", key="nps_none")
+    churn_w   = st.slider("Churn Risk Weight", 0.0, 1.0, 0.5, 0.05)
+    churn_none= st.checkbox("Churn Unknown", key="churn_none")
+    ref_w     = st.slider("Referral Weight", 0.0, 1.0, 0.5, 0.05)
+    ref_none  = st.checkbox("Referral Unknown", key="ref_none")
 
 # ─── Buyer Class & Population ─────────────────────────────────────────────────
 class Buyer:
     def __init__(self, idx, profile):
-        self.id = idx
-        self.segment     = profile.get("segment", profile.get("name"))
-        self.price_sens  = profile["price_sensitivity"]
-        self.trendiness  = profile["trendiness"]
-        self.income      = profile.get("income", "High" if random.random() < high_inc_pct/100 else "Low")
-        self.origin      = profile.get("origin", "Urban" if random.random() < urban_pct/100 else "Rural")
-        self.switch_cost = profile.get("switch_cost", random.uniform(0.1, 0.9))
-        self.influence   = profile.get("influence", random.randint(1, 10))
-        self.brand       = profile.get("brand", "Simlane" if random.random() < 0.6 else "Rival")
-        self.friends     = []
-        self.history     = []
-        self.emotion     = "neutral"
-    def update_emotion(self, new_emotion):
-        self.emotion = new_emotion
+        self.id             = idx
+        self.segment        = profile.get("segment")
+        self.recency        = profile.get("recency")
+        self.frequency      = profile.get("frequency")
+        self.monetary       = profile.get("monetary")
+        self.nps            = profile.get("nps")
+        self.churn_risk     = profile.get("churn_risk")
+        self.referral_count = profile.get("referral_count")
+        self.brand          = profile.get("brand", random.choice(["Simlane","Rival"]))
 
 # ─── Build Buyer Population ────────────────────────────────────────────────────
 def build_buyers_from_csv(df):
     buyers = []
     for _, row in df.iterrows():
-        profile = {col: row[col] for col in df.columns}
+        profile = row.to_dict()
         buyers.append(Buyer(row.get("id", len(buyers)), profile))
     G = nx.watts_strogatz_graph(len(buyers), k=min(6,len(buyers)-1), p=0.3)
     for i, b in enumerate(buyers): b.friends = list(G.neighbors(i))
     return buyers
 
 def build_buyers(n):
-    profiles = [
-        {"name":"Tech Enthusiast","price_sensitivity":0.3,"trendiness":0.8},
-        {"name":"Eco-Conscious","price_sensitivity":0.4,"trendiness":0.5},
-        {"name":"Loyalist","price_sensitivity":0.2,"trendiness":0.1},
-        {"name":"Price Sensitive","price_sensitivity":0.9,"trendiness":0.3},
-        {"name":"Trend Follower","price_sensitivity":0.4,"trendiness":0.9}
-    ]
-    buyers = [Buyer(i, random.choice(profiles)) for i in range(n)]
+    buyers = []
+    for i in range(n):
+        profile = {
+            "segment": random.choice(["Tech Enth", "Eco-Conscious", "Loyalist", "Price Sensitive", "Trend Follower"]),
+            "recency": random.randint(1,365),
+            "frequency": random.randint(1,50),
+            "monetary": round(random.uniform(10,1000),2),
+            "nps": random.randint(0,10),
+            "churn_risk": round(random.random(),2),
+            "referral_count": random.randint(0,10),
+            "brand": random.choice(["Simlane","Rival"]),
+        }
+        buyers.append(Buyer(i, profile))
     G = nx.watts_strogatz_graph(n, k=min(6,n-1), p=0.3)
     for i, b in enumerate(buyers): b.friends = list(G.neighbors(i))
     return buyers
 
-# ─── Utility & Event Logic ─────────────────────────────────────────────────────
-def compute_utils(buyers, traits):
-    arr = -np.array([b.price_sens for b in buyers]) * traits['Price Tier']
-    arr += np.array([b.trendiness for b in buyers]) * traits['Innovation']
-    arr += np.array([b.influence for b in buyers]) * traits['Influencer']
-    arr += np.array([traits['Trust']] * len(buyers)) * 0.5
-    arr -= np.array([b.switch_cost for b in buyers])
-    arr += np.array([1 if b.income=='High' else -1 for b in buyers]) * traits['Trust'] * 0.1
-    arr += np.array([1 if b.origin=='Urban' else -1 for b in buyers]) * traits['Influencer'] * 0.1
-    return arr
+# ─── Utility Calculation ───────────────────────────────────────────────────────
+def compute_utils(buyers):
+    # normalize constants
+    max_rec, max_freq, max_mon, max_nps, max_ref = 365, 50, 1000.0, 10, 10
+    utils = []
+    for b in buyers:
+        rec_term = 0 if rec_none else recency_w * (1 - b.recency/max_rec)
+        freq_term= 0 if freq_none else freq_w * (b.frequency/max_freq)
+        mon_term = 0 if mon_none else mon_w * (b.monetary/max_mon)
+        nps_term = 0 if nps_none else nps_w * (b.nps/max_nps)
+        churn_term = 0 if churn_none else -churn_w * b.churn_risk
+        ref_term = 0 if ref_none else ref_w * (b.referral_count/max_ref)
+        utils.append(rec_term + freq_term + mon_term + nps_term + churn_term + ref_term)
+    return np.array(utils)
 
-def apply_event(buyers, week, event, sim_t, riv_t):
+# ─── Simulation Logic ─────────────────────────────────────────────────────────
+def apply_event(buyers, utils):
+    # simple brand switch based on utility difference
     logs = []
-    u_sim = compute_utils(buyers, sim_t)
-    u_riv = compute_utils(buyers, riv_t)
-    if event == 'Bad PR': sim_t['Trust'] = max(0, sim_t['Trust'] - 0.1)
     for i, b in enumerate(buyers):
-        diffs = [(u_sim[f]-u_riv[f] if b.brand=='Simlane' else u_riv[f]-u_sim[f]) for f in b.friends]
-        social = np.tanh(np.mean(diffs))
-        p = 1/(1+np.exp(-(abs(u_sim[i]-u_riv[i])+social)))
-        target = 'Simlane' if u_sim[i]>u_riv[i] else 'Rival'
-        if target!=b.brand and random.random()<p:
-            old=b.brand; b.brand=target; b.update_emotion('hopeful' if target=='Simlane' else 'doubtful')
-            logs.append(f"[W{week}] Buyer {b.id} switch {old}->{target} p={p:.2f}")
-        if event=='Price Cut' and b.segment=='Price Sensitive':
-            if random.random()<0.5*(1-b.switch_cost):
-                old=b.brand; b.brand='Rival' if old=='Simlane' else 'Simlane'
-                logs.append(f"[W{week}] Price‑Cut nudge: {old}->{b.brand}")
-        if event=='Influencer Boost' and b.segment=='Trend Follower':
-            if random.random()<0.4*(1-b.switch_cost):
-                best='Simlane' if sim_t['Influencer']>riv_t['Influencer'] else 'Rival'
-                if b.brand!=best:
-                    old=b.brand; b.brand=best
-                    logs.append(f"[W{week}] Influencer‑Boost: {old}->{best}")
-    for b in buyers: b.history.append((week, b.brand, b.emotion))
+        other_util = random.choice(utils)  # placeholder for rival's utility
+        if utils[i] > other_util:
+            orig = b.brand; b.brand = "Simlane"; logs.append(f"Buyer {b.id} -> Simlane")
+        else:
+            orig = b.brand; b.brand = "Rival"; logs.append(f"Buyer {b.id} -> Rival")
     return logs
 
-# ─── Scenario Selection & Run ─────────────────────────────────────────────────
-event = st.selectbox(
-    "Choose a strategic event to simulate:",
-    ["Price Cut", "Influencer Boost", "Bad PR"],
-    help="Simulate a single pressure event on brand loyalty."
-)
+# ─── Run Simulation & Display ─────────────────────────────────────────────────
+event = st.selectbox("Event:", ["None (Utility Only)", "Price Cut", "Referral Boost"])
 
 if st.button("Run Simulation"):
     buyers = build_buyers_from_csv(df_upload) if 'df_upload' in globals() else build_buyers(n_buyers)
-    timeline, logs = [], []
-    for week in range(1, weeks+1):
-        logs += apply_event(buyers, week, event, simlane_traits, rival_traits)
-        counts = pd.Series([b.brand for b in buyers]).value_counts()
-        timeline.append({"Week": week, "Simlane": counts.get("Simlane",0), "Rival": counts.get("Rival",0)})
-    df_tl = pd.DataFrame(timeline).set_index("Week")
-
-    st.subheader("Brand Adoption Over Time")
-    st.line_chart(df_tl)
-
-    st.subheader("Final Brand Shares")
-    st.table(df_tl.iloc[-1:].rename(index={df_tl.index[-1]: 'Week'}))
-
-    st.subheader("Sample Switch Logs")
+    utils = compute_utils(buyers)
+    logs = apply_event(buyers, utils)
+    
+    # summarize
+    df = pd.DataFrame([vars(b) for b in buyers])
+    share = df['brand'].value_counts(normalize=True).mul(100).round(1)
+    st.subheader("Final Brand Share (%)")
+    st.table(share.to_frame('Percent'))
+    
+    st.subheader("Sample Logs")
     with st.expander("View Logs", expanded=False):
-        for log in logs[:50]: st.text(log)
-
-    start, end = df_tl.iloc[0, 0], df_tl.iloc[-1, 0]
-    delta = end - start
-    pct = delta / (buyers and len(buyers)) * 100
-    st.markdown("---")
-    st.subheader("📖 Narrative Summary")
-    st.markdown(
-        f"Simlane grew from {start} → {end} buyers over {weeks} weeks (Δ{delta}, {pct:.1f}%). Rival ended at {df_tl.iloc[-1,1]}."
-    )
+        for log in logs[:20]: st.text(log)
