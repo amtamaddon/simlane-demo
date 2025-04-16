@@ -91,9 +91,18 @@ if st.button("Run Simulation"):
     # Narrative
     sim_start = df['brand'].value_counts(normalize=True).get('Simlane',0)*100
     sim_end = share.get('Simlane',0)
-    st.subheader("Summary")
-    st.markdown(f"Simlane share: **{sim_start:.1f}% → {sim_end:.1f}%** of buyers based purely on computed utilities.")
-    st.markdown("**Recommendations:** Focus on segments with low recency scores and high churn risk to improve loyalty.")
+    st.subheader("📖 Narrative Summary")
+    st.markdown(
+        f"Over **{weeks}** simulation rounds, Simlane’s share shifted from **{sim_start:.1f}%** to **{sim_end:.1f}%** among **{len(df)}** buyers, "
+        f"a net change of **{(sim_end - sim_start):.1f} percentage points**."
+    )
+    st.markdown(
+        "- **Key Insights:** Recency and churn risk are the strongest indicators of brand switching.
+"
+        "- **Segment Highlights:** See the segment-level table below for which groups performed best or worst.
+"
+        "- **Recommendation:** Run targeted re-engagement campaigns for buyers with low recency (<30 days) and high churn risk (>0.5)."
+    )
 
     # Segment outcomes
     st.subheader("Segment-level Outcomes")
