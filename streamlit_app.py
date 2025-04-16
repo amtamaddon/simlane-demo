@@ -38,7 +38,7 @@ if not use_uploaded_data:
     st.markdown("Upload a file above or add some input below:")
     urban_pct = st.slider("% Urban Customers", 0, 100, 60)
     high_income_pct = st.slider("% High Income (>$100k)", 0, 100, 30)
-    time_steps = st.slider("🕒 Number of Simulation Rounds (Weeks)", 1, 10, 3)("🕒 Number of Simulation Rounds (Weeks)", 1, 10, 3)
+    time_steps = st.slider("🕒 Number of Simulation Rounds (Weeks)", 1, 10, 3)
 
 # === Brand Trait Configuration ===
 st.markdown("---")
