@@ -1,5 +1,3 @@
-# streamlit_app.py
-
 import streamlit as st
 import pandas as pd
 import random
@@ -83,7 +81,6 @@ def generate_population(n=500):
         population.append(agent)
     return pd.DataFrame(population)
 
-# [Simulation logic and UI continues below...]
 # === Simulation Logic ===
 def simulate_event(population_df, event, simlane_traits, rival_traits):
     logs = []
@@ -114,8 +111,9 @@ def simulate_event(population_df, event, simlane_traits, rival_traits):
                     logs.append(f"Agent {index} switched to Rival influenced by trend.")
 
         elif event == "Bad PR" and segment == "Loyalist":
-            if current_brand == "Simlane" and simlane_traits["Trust"] < 0.7:
-                if random.random() < 0.3 * (1 - cost):
+            if current_brand == "Simlane":
+                trust_delta = 0.7 - simlane_traits["Trust"]
+                if trust_delta > 0 and random.random() < 0.3 * trust_delta * (1 - cost):
                     new_df.at[index, 'brand'] = "Rival"
                     logs.append(f"Agent {index} lost trust in Simlane after PR and switched.")
 
@@ -147,5 +145,8 @@ if st.button("Run Simulation"):
     st.line_chart(df_timeline)
 
     st.subheader("📝 Agent-Level Decision Log")
-    for log in logs_all[:100]:
-        st.text(log)
+    if logs_all:
+        for log in logs_all[:100]:
+            st.text(log)
+    else:
+        st.info("No switching events recorded. Try a different scenario or adjust brand traits.")
