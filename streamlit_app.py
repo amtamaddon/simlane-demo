@@ -194,7 +194,13 @@ if st.button("Run Simulation"):
     delta_df = delta_df.sort_values(by="Net Change", ascending=False)
     st.dataframe(delta_df.set_index("Brand"))
 
-    st.subheader("📝 Agent-Level Decision Log")
+    total_agents = df_timeline.iloc[-1].sum()
+    switch_count = sum(1 for log in logs_all if "switched" in log)
+    rate = switch_count / total_agents * 100
+    winning_brand = delta_df.iloc[0]['Brand']
+    st.markdown(f"**🧠 Summary:** Over {time_steps} rounds, {switch_count} agents (~{rate:.1f}%) switched brands. The winning brand was **{winning_brand}**.")
+
+
     if logs_all:
         with st.expander("View sample of agent-level switching behavior", expanded=False):
             for log in logs_all[:50]:
