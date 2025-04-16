@@ -22,7 +22,7 @@ with st.expander("📁 Load Buyer Data or Generate Synthetic Population", expand
 1,Loyalist,Simlane,Low,Rural,0.8
 2,Trend Follower,Rival,High,Urban,0.3""", file_name="sample_buyers.csv")
 
-    upload = st.file_uploader("Upload a CSV of buyer personas (optional)", type=["csv"])("Upload a CSV of buyer personas (optional)", type=["csv"])
+    upload = st.file_uploader("Upload a CSV of buyer personas (optional)", type=["csv"])
 
 use_uploaded_data = False
 if upload is not None:
