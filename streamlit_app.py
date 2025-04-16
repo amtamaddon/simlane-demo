@@ -166,14 +166,14 @@ event = st.selectbox(
     help="Simulate a single pressure event on brand loyalty. More complex campaigns coming soon."
 )
 
-# === Metrics Display (after variables exist) ===
-if 'time_steps' in locals() and ('df_input' in locals() or 'pop' in locals()):
+# === Header and Metrics ===
+if 'time_steps' in locals():
     col1, col2 = st.columns([2, 1])
     with col1:
         st.title("Simlane Strategic Scenario Simulator")
     with col2:
         st.metric(label="📊 Rounds Simulated", value=time_steps)
-        st.metric(label="👥 Agents", value=len(pop))
+        st.metric(label="👥 Agents", value=len(df_input) if use_uploaded_data else 500)
 
 # === Run Simulation ===
 if st.button("Run Simulation"):
