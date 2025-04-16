@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import networkx as nx
 import random
 
 # ─── App Config ───────────────────────────────────────────────────────────────
@@ -48,7 +47,6 @@ with st.sidebar.expander("1) Buyer Base Settings", expanded=True):
             'referral_count': np.clip(np.random.normal(ref_mean, ref_std, n), 0, None).astype(int),
         })
         df['brand'] = np.random.choice(['Simlane','Rival'], size=n)
-    weeks = st.slider("Simulation Rounds", 1, 20, 5)
 
 # ─── Sidebar: Utility Weights ─────────────────────────────────────────────────
 with st.sidebar.expander("2) Utility Weights", expanded=False):
@@ -59,90 +57,50 @@ with st.sidebar.expander("2) Utility Weights", expanded=False):
     churn_w     = st.slider("Churn Risk Weight", 0.0, 2.0, 1.0, 0.05)
     referral_w  = st.slider("Referral Count Weight", 0.0, 2.0, 1.0, 0.05)
 
-# ─── Prepare Graph & Normalize ─────────────────────────────────────────────────
-n = len(df)
-G = nx.watts_strogatz_graph(n, k=min(6,n-1), p=0.3)
-neighbors = {i: list(G.neighbors(i)) for i in range(n)}
-# precompute maxima for normalization
-df_max = {
-    'recency': 365,
-    'frequency': 50,
-    'monetary': df['monetary'].max(),
-    'nps': 10,
-    'churn_risk': 1,
-    'referral_count': df['referral_count'].max()
-}
-
-# ─── Voting Loop Simulation ───────────────────────────────────────────────────
-def compute_personal_score(row):
-    rec   = 1 - row['recency'] / df_max['recency']
-    freq  = row['frequency'] / df_max['frequency']
-    mon   = row['monetary'] / df_max['monetary'] if df_max['monetary']>0 else 0
-    nps   = row['nps'] / df_max['nps']
-    churn = 1 - row['churn_risk'] / df_max['churn_risk']
-    ref   = row['referral_count'] / df_max['referral_count'] if df_max['referral_count']>0 else 0
-    return (recency_w*rec + frequency_w*freq + monetary_w*mon +
-            nps_w*nps + churn_w*churn + referral_w*ref)
+# ─── Simulation ──────────────────────────────────────────────────────────────
+def compute_score(row, df_max):
+    rec = 1 - row['recency']/365
+    freq = row['frequency']/50
+    mon = row['monetary']/df_max['monetary'] if df_max['monetary']>0 else 0
+    nps = row['nps']/10
+    churn = 1 - row['churn_risk']
+    ref = row['referral_count']/df_max['referral_count'] if df_max['referral_count']>0 else 0
+    return recency_w*rec + frequency_w*freq + monetary_w*mon + nps_w*nps + churn_w*churn + referral_w*ref
 
 if st.button("Run Simulation"):
-    # Initial brand list
-    brands = df['brand'].tolist()
-    timeline_sim = []
-    timeline_riv = []
+    # precompute maxima
+    df_max = {
+        'monetary': df['monetary'].max(),
+        'referral_count': df['referral_count'].max()
+    }
+    # compute utilities
+    df['utility'] = df.apply(lambda r: compute_score(r, df_max), axis=1)
+    # brand assignment
+    benchmark = df['utility'].mean()
+    df['final_brand'] = np.where(df['utility'] >= benchmark, 'Simlane', 'Rival')
 
-    # Run voting rounds
-    for _ in range(weeks):
-        scores = df.apply(compute_personal_score, axis=1)
-        mean_score = scores.mean()
-        new_brands = []
-        for i in range(n):
-            # Personal vote based on score
-            p_vote = 'Simlane' if scores[i] >= mean_score else 'Rival'
-            # Peer vote (majority)
-            peers = neighbors[i]
-            sim_cnt = sum(brands[j] == 'Simlane' for j in peers)
-            peer_vote = 'Simlane' if sim_cnt >= (len(peers) - sim_cnt) else 'Rival'
-            # Final vote default to personal
-            new_brands.append(p_vote)
-        brands = new_brands
-        sim_count = brands.count('Simlane')
-        timeline_sim.append(sim_count)
-        timeline_riv.append(n - sim_count)
+    # Metrics summary
+    st.subheader("Buyer Metrics Summary")
+    st.dataframe(df[['recency','frequency','monetary','nps','churn_risk','referral_count']].describe().round(2))
 
-    # Build timeline DataFrame
-    timeline_df = pd.DataFrame({
-        'Week': range(1, weeks + 1),
-        'Simlane': timeline_sim,
-        'Rival': timeline_riv
-    }).set_index('Week')
+    # Brand share
+    st.subheader("Brand Share")
+    share = df['final_brand'].value_counts(normalize=True).mul(100).round(1)
+    st.bar_chart(share)
 
-    # Plot results
-    st.subheader("Voting Simulation Results")
-    st.line_chart(timeline_df)
+    # Narrative
+    sim_start = df['brand'].value_counts(normalize=True).get('Simlane',0)*100
+    sim_end = share.get('Simlane',0)
+    st.subheader("Summary")
+    st.markdown(f"Simlane share: **{sim_start:.1f}% → {sim_end:.1f}%** of buyers based purely on computed utilities.")
+    st.markdown("**Recommendations:** Focus on segments with low recency scores and high churn risk to improve loyalty.")
 
-    # Tabular view
-    st.subheader("Brand Share by Week")
-    st.dataframe(timeline_df)
-
-    # Narrative summary
-    sim_initial = timeline_sim[0] / n * 100
-    sim_final = timeline_sim[-1] / n * 100
-    st.markdown( (
-        f"**Simlane share**: {sim_initial:.1f}% → {sim_final:.1f}% over {weeks} rounds "
-        f"(n={n} buyers). Rival ended at {100 - sim_final:.1f}%"
-    ) )
-
-    # Segment-level breakdown
-    df['final_brand'] = brands
+    # Segment outcomes
     st.subheader("Segment-level Outcomes")
-    seg_table = (
-        df.groupby(['segment', 'final_brand'])
-          .size()
-          .unstack(fill_value=0)
-    )
+    seg_table = df.groupby(['segment','final_brand']).size().unstack(fill_value=0)
     st.dataframe(seg_table)
 
-    # Sample final assignments
+    # Sample assignments
     st.subheader("Sample Buyer Assignments")
-    sample_cols = ['id', 'segment', 'final_brand']
-    st.dataframe(df[sample_cols].sample(min(20, n)))
+    display = df.sample(min(20,len(df)))[['id','segment','final_brand','utility']]
+    st.dataframe(display)
