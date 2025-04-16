@@ -14,12 +14,15 @@ st.subheader("Customer Switching Behavior Based on Market Events")
 
 # === Step 0: Load or Generate Agent Data ===
 with st.expander("📁 Load Buyer Data or Generate Synthetic Population", expanded=False):
-st.markdown("#### Required CSV Columns:")
-st.code("id,segment,brand,income,origin,switching_cost")
+    st.markdown("#### Required CSV Columns:")
+    st.code("id,segment,brand,income,origin,switching_cost")
 
-st.download_button("📥 Download Sample CSV", data="""id,segment,brand,income,origin,switching_cost\n0,Price Sensitive,Rival,High,Urban,0.4\n1,Loyalist,Simlane,Low,Rural,0.8\n2,Trend Follower,Rival,High,Urban,0.3""", file_name="sample_buyers.csv")
+    st.download_button("📥 Download Sample CSV", data="""id,segment,brand,income,origin,switching_cost
+0,Price Sensitive,Rival,High,Urban,0.4
+1,Loyalist,Simlane,Low,Rural,0.8
+2,Trend Follower,Rival,High,Urban,0.3""", file_name="sample_buyers.csv")
 
-upload = st.file_uploader("Upload a CSV of buyer personas (optional)", type=["csv"])
+    upload = st.file_uploader("Upload a CSV of buyer personas (optional)", type=["csv"])("Upload a CSV of buyer personas (optional)", type=["csv"])
 
 use_uploaded_data = False
 if upload is not None:
@@ -43,14 +46,14 @@ if not use_uploaded_data:
 # === Brand Trait Configuration ===
 st.markdown("---")
 with st.expander("🔧 Brand Trait Configuration", expanded=False):
-simlane_traits = {
+    simlane_traits = {
     "Price Tier": st.slider("Simlane Price Tier (1=Low, 5=High)", 1, 5, 3),
     "Innovation": st.slider("Simlane Innovation Index (0-1)", 0.0, 1.0, 0.8),
     "Trust": st.slider("Simlane Brand Trust (0-1)", 0.0, 1.0, 0.75),
     "Influencer Power": st.slider("Simlane Influencer Power (0-1)", 0.0, 1.0, 0.4)
 }
 
-rival_traits = {
+    rival_traits = {
     "Price Tier": st.slider("Rival Price Tier (1=Low, 5=High)", 1, 5, 2),
     "Innovation": st.slider("Rival Innovation Index (0-1)", 0.0, 1.0, 0.5),
     "Trust": st.slider("Rival Brand Trust (0-1)", 0.0, 1.0, 0.6),
