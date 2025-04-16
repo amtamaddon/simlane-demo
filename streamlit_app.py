@@ -201,7 +201,7 @@ if st.button("Run Simulation"):
     switch_count = sum(1 for log in logs_all if "switched" in log)
     rate = switch_count / total_agents * 100
     winning_brand = delta_df.iloc[0]['Brand']
-    st.markdown(f"**🧠 Summary:** Over {time_steps} rounds, {switch_count} agents (~{rate:.1f}%) switched brands. The winning brand was **{winning_brand}**.")
+    st.markdown(f"**Summary:** Over {time_steps} rounds, {switch_count} agents (~{rate:.1f}%) switched brands. The winning brand was **{winning_brand}**.")
 
 
     if logs_all:
